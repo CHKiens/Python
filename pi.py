@@ -1,0 +1,123 @@
+from gpiozero import OutputDevice
+from gpiozero import LED
+from time import sleep
+from socket import *
+import json
+serverport = 12000
+serversocket = socket(AF_INET, SOCK_DGRAM)
+
+serveradress = ('', serverport)
+serversocket.bind(serveradress)
+#LED i GPIO port 17
+led = LED(17)
+
+# Track the current position of the motor
+current_position = "low"  # Default starting position
+
+def set_step_setting(setting):
+    global current_position
+
+    if setting == current_position:
+        print(f"Already in {setting} position")
+        return
+
+    if setting == "low":
+        led.off()
+        print("Moving to low")
+        if current_position == "medium":
+            step_motor(steps_to_up, direction=-1)  # Move back 90 degrees
+        elif current_position == "high":
+            step_motor(steps_to_up + steps_to_down, direction=-1)  # Move back 180 degrees
+        stop_motor()
+
+    elif setting == "medium":
+        led.off()
+        print("Moving to medium")
+        if current_position == "low":
+            step_motor(steps_to_up, direction=1)  # Move forward 90 degrees
+        elif current_position == "high":
+            step_motor(steps_to_down, direction=-1)  # Move back 90 degrees
+
+    elif setting == "high":
+        led.off()
+        print("Moving to high")
+        if current_position == "low":
+            step_motor(steps_to_up + steps_to_down, direction=1)  # Move forward 180 degrees
+        elif current_position == "medium":
+            step_motor(steps_to_down, direction=1)  # Move forward 90 degrees
+
+    else:
+        led.on()
+        print("Invalid setting")
+        return
+
+    current_position = setting  # Update the current position
+
+#GPIO-pins til ULN2003
+IN1 = OutputDevice(6)
+IN2 = OutputDevice(13)
+IN3 = OutputDevice(19)
+IN4 = OutputDevice(26)
+
+#Stepsekvens til 28BYJ-48 (halv-step)
+step_sequence = [
+    [1, 0, 0, 1],
+    [1, 0, 0, 0],
+    [1, 1, 0, 0],
+    [0, 1, 0, 0],
+    [0, 1, 1, 0],
+    [0, 0, 1, 0],
+    [0, 0, 1, 1],
+    [0, 0, 0, 1],
+]
+
+def set_step(step):
+    IN1.value = step[0]
+    IN2.value = step[1]
+    IN3.value = step[2]
+    IN4.value = step[3]
+
+def step_motor(steps, delay=0.003, direction=1):
+    for step in range(steps):
+        for step in (step_sequence if direction == 1 else reversed(step_sequence)):
+            set_step(step)
+            sleep(delay)
+
+def stop_motor():
+    IN1.off()
+    IN2.off()
+    IN3.off()
+    IN4.off()
+
+#Positioner i antal steps (juster disse efter behov)
+steps_to_middle = 0
+steps_to_up = 130     # ca. 90 grader mod venstre
+steps_to_down = 130   # ca. 90 grader mod højre
+
+while True:
+    message, clientadress = serversocket.recvfrom(1024)
+    print("Modtaget besked fra klienten: ", message.decode())
+    json_data = json.loads(message.decode().strip())
+    setting = json_data
+
+    if setting:
+        set_step_setting(setting)
+
+try:
+    print("Starter i MIDTEN")
+    sleep(1)
+
+    print("Kører til THUMBS UP")
+    step_motor(steps_to_up, direction=-1)
+    sleep(1)
+
+    print("Kører til THUMBS DOWN")
+    step_motor(steps_to_up + steps_to_down, direction=1)
+    sleep(1)
+
+    print("Tilbage til MIDTEN")
+    step_motor(steps_to_down, direction=-1)
+
+finally:
+    stop_motor()
+    print("Motor stoppet")
