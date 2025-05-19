@@ -3,7 +3,7 @@ from gpiozero import LED
 from time import sleep
 from socket import *
 import json
-serverport = 12000
+serverport = 11999
 serversocket = socket(AF_INET, SOCK_DGRAM)
 
 serveradress = ('', serverport)
@@ -11,13 +11,26 @@ serversocket.bind(serveradress)
 #LED i GPIO port 17
 led = LED(17)
 
-# Track the current position of the motor
+
 current_position = "low"  # Default starting position
+
+def save_position():
+    global current_position
+    with open("position.txt", "w") as f:
+        f.write(current_position)
+
+def load_position():
+    global current_position
+    try:
+        with open("position.txt", "r") as f:
+            current_position = f.read().strip()
+    except FileNotFoundError:
+        current_position = "low"  # Default starting position if file not found
 
 def set_step_setting(setting):
     global current_position
-
     if setting == current_position:
+        led.off()
         print(f"Already in {setting} position")
         return
 
@@ -95,13 +108,16 @@ steps_to_up = 130     # ca. 90 grader mod venstre
 steps_to_down = 130   # ca. 90 grader mod højre
 
 while True:
+    
     message, clientadress = serversocket.recvfrom(1024)
     print("Modtaget besked fra klienten: ", message.decode())
     json_data = json.loads(message.decode().strip())
     setting = json_data
 
     if setting:
+        load_position()
         set_step_setting(setting)
+        save_position()
 
 try:
     print("Starter i MIDTEN")
