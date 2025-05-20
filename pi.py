@@ -8,11 +8,15 @@ serversocket = socket(AF_INET, SOCK_DGRAM)
 
 serveradress = ('', serverport)
 serversocket.bind(serveradress)
-#LED i GPIO port 17
-led = LED(17)
+#LED i GPIO port 17 og 18
+red = LED(17)
+green = LED(18)
+
 
 
 current_position = "low"  # Default starting position
+
+
 
 def save_position():
     global current_position
@@ -29,13 +33,18 @@ def load_position():
 
 def set_step_setting(setting):
     global current_position
+    if setting != None:
+        red.off()
+        green.on()
+    else:
+        green.off()
+        red.on()
+
     if setting == current_position:
-        led.off()
         print(f"Already in {setting} position")
         return
 
     if setting == "low":
-        led.off()
         print("Moving to low")
         if current_position == "medium":
             step_motor(steps_to_up, direction=-1)  # Move back 90 degrees
@@ -44,7 +53,6 @@ def set_step_setting(setting):
         stop_motor()
 
     elif setting == "medium":
-        led.off()
         print("Moving to medium")
         if current_position == "low":
             step_motor(steps_to_up, direction=1)  # Move forward 90 degrees
@@ -52,7 +60,6 @@ def set_step_setting(setting):
             step_motor(steps_to_down, direction=-1)  # Move back 90 degrees
 
     elif setting == "high":
-        led.off()
         print("Moving to high")
         if current_position == "low":
             step_motor(steps_to_up + steps_to_down, direction=1)  # Move forward 180 degrees
@@ -60,8 +67,9 @@ def set_step_setting(setting):
             step_motor(steps_to_down, direction=1)  # Move forward 90 degrees
 
     else:
-        led.on()
         print("Invalid setting")
+        green.off()
+        red.on()
         return
 
     current_position = setting  # Update the current position
@@ -108,32 +116,21 @@ steps_to_up = 130     # ca. 90 grader mod venstre
 steps_to_down = 130   # ca. 90 grader mod højre
 
 while True:
-    
+
     message, clientadress = serversocket.recvfrom(1024)
     print("Modtaget besked fra klienten: ", message.decode())
-    json_data = json.loads(message.decode().strip())
-    setting = json_data
+
+    try:
+        json_data = json.loads(message.decode().strip())
+        setting = json_data
+
+    except json.JSONDecodeError:
+        print("Fejl i modtagelse af JSON data")
+        setting = None
+        green.off()
+        red.on()
 
     if setting:
         load_position()
         set_step_setting(setting)
         save_position()
-
-try:
-    print("Starter i MIDTEN")
-    sleep(1)
-
-    print("Kører til THUMBS UP")
-    step_motor(steps_to_up, direction=-1)
-    sleep(1)
-
-    print("Kører til THUMBS DOWN")
-    step_motor(steps_to_up + steps_to_down, direction=1)
-    sleep(1)
-
-    print("Tilbage til MIDTEN")
-    step_motor(steps_to_down, direction=-1)
-
-finally:
-    stop_motor()
-    print("Motor stoppet")
